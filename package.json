@@ -1,0 +1,20 @@
+{
+  "name": "cross-chain-nft-bundle",
+  "version": "1.0.0",
+  "description": "Smart contract leveraging Chainlink's cross-chain minting functionality",
+  "main": "index.js",
+  "scripts": {
+    "compile": "npx hardhat compile",
+    "test": "npx hardhat test",
+    "coverage": "npx hardhat coverage"
+  },
+  "author": "Zakhar Deyneka",
+  "license": "MIT",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^3.0.0",
+    "@openzeppelin/contracts": "^5.0.0",
+    "hardhat": "^2.19.0",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.2.2"
+  }
+}
