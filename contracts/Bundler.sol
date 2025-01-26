@@ -3,12 +3,15 @@ pragma solidity 0.8.28;
 
 import { IERC1155 } from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import { IERC1155Receiver } from "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
+import { IERC165 } from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import { Client } from "@chainlink/contracts/src/v0.8/ccip/libraries/Client.sol";
+import { CCIPReceiver } from "@chainlink/contracts/src/v0.8/ccip/applications/CCIPReceiver.sol";
 
-contract Bundler is Ownable, ReentrancyGuard, IERC1155Receiver {
+contract Bundler is CCIPReceiver, Ownable, ReentrancyGuard, IERC1155Receiver {
   using SafeERC20 for IERC20;
 
   struct Bundle {
@@ -30,13 +33,15 @@ contract Bundler is Ownable, ReentrancyGuard, IERC1155Receiver {
   event BundlePurchased(uint256 indexed bundleId, address indexed buyer);
 
   error InvalidZeroPrice();
+  error InvalidZeroQuantity();
+  error InvalidZeroAddress();
   error MismatchedNftAmounts();
   error InsufficientNftBalance(uint256);
+  error InvalidTokenAmount();
   error BundleNotActive(uint256);
-  error InvalidZeroQuantity();
   error TransferFailed();
 
-  constructor(address _paymentToken) Ownable(msg.sender) {
+  constructor(address _paymentToken, address _router) Ownable(msg.sender) CCIPReceiver(_router) {
     paymentToken = IERC20(_paymentToken);
   }
 
@@ -80,7 +85,44 @@ contract Bundler is Ownable, ReentrancyGuard, IERC1155Receiver {
     return bundleId;
   }
 
-  function purchaseBundle(uint256 _bundleId) external nonReentrant {
+  function purchaseBundle(uint256 _bundleId) external {
+    _purchaseBundleInternal(_bundleId, msg.sender);
+  }
+
+  function deactivateBundle(uint256 _bundleId) external onlyOwner {
+    Bundle storage bundle = bundles[_bundleId];
+    address nftContractAddress = bundle.nftContract;
+
+    for (uint256 i; i < bundle.nftIds.length; ++i) {
+      lockedAmounts[nftContractAddress][bundle.nftIds[i]] -= bundle.amounts[i] * bundle.remainingQuantity;
+    }
+
+    bundle.isActive = false;
+    bundle.remainingQuantity = 0;
+  }
+
+  function supportsInterface(bytes4 interfaceId) public pure override(IERC165, CCIPReceiver) returns (bool) {
+    return
+      interfaceId == 0x01ffc9a7 || // ERC165 Interface ID for ERC165
+      interfaceId == 0x4e2312e0 || // ERC1155Receiver Interface ID
+      interfaceId == 0x324cf6a8; // CCIP Receiver Interface ID
+  }
+
+  function onERC1155Received(address, address, uint256, uint256, bytes calldata) external pure returns (bytes4) {
+    return this.onERC1155Received.selector;
+  }
+
+  function onERC1155BatchReceived(
+    address,
+    address,
+    uint256[] calldata,
+    uint256[] calldata,
+    bytes calldata
+  ) external pure returns (bytes4) {
+    return this.onERC1155BatchReceived.selector;
+  }
+
+  function _purchaseBundleInternal(uint256 _bundleId, address _buyer) internal nonReentrant {
     Bundle storage bundle = bundles[_bundleId];
 
     if (!bundle.isActive || bundle.remainingQuantity == 0) {
@@ -100,51 +142,26 @@ contract Bundler is Ownable, ReentrancyGuard, IERC1155Receiver {
       lockedAmounts[nftContractAddress][bundle.nftIds[i]] -= bundle.amounts[i];
     }
 
-    address owner = owner();
-    if (!paymentToken.transferFrom(msg.sender, owner, bundle.price)) {
+    address contractOwner = owner();
+    if (!paymentToken.transferFrom(_buyer, contractOwner, bundle.price)) {
       revert TransferFailed();
     }
 
-    IERC1155(nftContractAddress).safeBatchTransferFrom(owner, msg.sender, bundle.nftIds, bundle.amounts, "");
+    IERC1155(nftContractAddress).safeBatchTransferFrom(contractOwner, _buyer, bundle.nftIds, bundle.amounts, "");
 
-    emit BundlePurchased(_bundleId, msg.sender);
+    emit BundlePurchased(_bundleId, _buyer);
   }
 
-  function deactivateBundle(uint256 _bundleId) external onlyOwner {
-    Bundle storage bundle = bundles[_bundleId];
-    address nftContractAddress = bundle.nftContract;
+  function _ccipReceive(Client.Any2EVMMessage memory message) internal override {
+    (uint256 bundleId, address buyer) = abi.decode(message.data, (uint256, address));
 
-    for (uint256 i; i < bundle.nftIds.length; ++i) {
-      lockedAmounts[nftContractAddress][bundle.nftIds[i]] -= bundle.amounts[i] * bundle.remainingQuantity;
+    if (buyer == address(0)) {
+      revert InvalidZeroAddress();
+    }
+    if (message.destTokenAmounts.length == 0) {
+      revert InvalidTokenAmount();
     }
 
-    bundle.isActive = false;
-    bundle.remainingQuantity = 0;
-  }
-
-  function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
-    return
-      interfaceId == 0x01ffc9a7 || // ERC165 Interface ID for ERC165
-      interfaceId == 0x4e2312e0; // ERC1155Receiver Interface ID
-  }
-
-  function onERC1155Received(
-    address,
-    address,
-    uint256,
-    uint256,
-    bytes calldata
-  ) external pure returns (bytes4) {
-    return this.onERC1155Received.selector;
-  }
-
-  function onERC1155BatchReceived(
-    address,
-    address,
-    uint256[] calldata,
-    uint256[] calldata,
-    bytes calldata
-  ) external pure returns (bytes4) {
-    return this.onERC1155BatchReceived.selector;
+    _purchaseBundleInternal(bundleId, buyer);
   }
 }

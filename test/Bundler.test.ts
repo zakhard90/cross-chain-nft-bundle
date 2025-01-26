@@ -5,7 +5,7 @@ import { ZeroHash } from 'ethers';
 
 describe('Bundler', function () {
   async function deployBundlerFixture() {
-    const [owner, buyer, another] = await ethers.getSigners();
+    const [owner, buyer, router, another] = await ethers.getSigners();
     const uri = 'https://my.metadata.sample/';
     const nftAmounts = [50, 100, 200, 500, 1000, 10000];
 
@@ -16,7 +16,7 @@ describe('Bundler', function () {
     const mockPaymentToken = await MockERC20.deploy('MockToken', 'MTK', 18);
 
     const Bundler = await ethers.getContractFactory('Bundler');
-    const bundler = await Bundler.deploy(await mockPaymentToken.getAddress());
+    const bundler = await Bundler.deploy(await mockPaymentToken.getAddress(), router);
 
     // Transfer nfts to the bundler
     await nft.safeBatchTransferFrom(owner, bundler.getAddress(), [1, 2, 3], [5, 5, 5], ZeroHash);
