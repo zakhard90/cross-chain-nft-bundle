@@ -80,10 +80,9 @@ describe('Bundler', function () {
 
   describe('Bundle Purchase', function () {
     it('Should allow purchasing a bundle', async function () {
-      const { bundler, nft, mockPaymentToken, owner, buyer } = await loadFixture(deployBundlerFixture);
+      const { bundler, nft, owner, buyer } = await loadFixture(deployBundlerFixture);
 
       await nft.setApprovalForAll(await bundler.getAddress(), true);
-
       await bundler.createBundle(await nft.getAddress(), [1, 2], [5, 5], ethers.parseEther('0.1'), 5);
 
       const initialOwnerBalance = await nft.balanceOf(owner.address, 1);
@@ -91,20 +90,26 @@ describe('Bundler', function () {
 
       await bundler.connect(buyer).purchaseBundle(0);
 
-      const finalOwnerBalance = await nft.balanceOf(owner.address, 1);
-      const finalBuyerBalance = await nft.balanceOf(buyer.address, 1);
+      expect(await nft.balanceOf(owner.address, 1)).to.equal(initialOwnerBalance - 5n);
+      expect(await nft.balanceOf(buyer.address, 1)).to.equal(initialBuyerBalance + 5n);
+    });
 
-      expect(finalOwnerBalance).to.equal(initialOwnerBalance - 5n);
-      expect(finalBuyerBalance).to.equal(initialBuyerBalance + 5n);
+    it('Should revert when token fails on purchase', async function () {
+      const { bundler, nft, mockPaymentToken, owner, buyer } = await loadFixture(deployBundlerFixture);
+
+      await nft.setApprovalForAll(await bundler.getAddress(), true);
+      await bundler.createBundle(await nft.getAddress(), [1, 2], [5, 5], ethers.parseEther('0.1'), 5);
+      
+      await mockPaymentToken.connect(buyer).freeze(true);
+      
+      await expect(bundler.connect(buyer).purchaseBundle(0)).to.revertedWithCustomError(bundler, 'TransferFailed');
     });
 
     it('Should deactivate bundle when quantity reaches zero', async function () {
       const { bundler, nft, owner, buyer } = await loadFixture(deployBundlerFixture);
 
       await nft.setApprovalForAll(await bundler.getAddress(), true);
-
       await bundler.createBundle(await nft.getAddress(), [1, 2], [5, 5], ethers.parseEther('0.1'), 1);
-
       await bundler.connect(buyer).purchaseBundle(0);
 
       const bundle = await bundler.bundles(0);
@@ -118,14 +123,24 @@ describe('Bundler', function () {
       const { bundler, nft, owner } = await loadFixture(deployBundlerFixture);
 
       await nft.setApprovalForAll(await bundler.getAddress(), true);
-
       await bundler.createBundle(await nft.getAddress(), [1, 2], [5, 5], ethers.parseEther('0.1'), 5);
-
       await bundler.deactivateBundle(0);
 
       const bundle = await bundler.bundles(0);
       expect(bundle.isActive).to.be.false;
       expect(bundle.remainingQuantity).to.equal(0);
+    });
+
+    it('Should revert when a deactivated bundle is purchased', async function () {
+      const { bundler, nft, owner, buyer } = await loadFixture(deployBundlerFixture);
+
+      await nft.setApprovalForAll(await bundler.getAddress(), true);
+      await bundler.connect(owner).createBundle(await nft.getAddress(), [1, 2], [5, 5], ethers.parseEther('0.1'), 5);
+      await bundler.connect(owner).deactivateBundle(0);
+
+      const bundle = await bundler.bundles(0);
+      expect(bundle.isActive).to.be.false;
+      await expect(bundler.connect(buyer).purchaseBundle(0)).to.revertedWithCustomError(bundler, 'BundleNotActive');
     });
   });
 });
