@@ -1,11 +1,11 @@
 import { loadFixture } from '@nomicfoundation/hardhat-network-helpers';
 import { expect } from 'chai';
 import { ethers } from 'hardhat';
-import { ZeroHash } from 'ethers';
+import { getAddress, ZeroHash } from 'ethers';
 
 describe('Bundler', function () {
   async function deployBundlerFixture() {
-    const [owner, buyer, router, another] = await ethers.getSigners();
+    const [owner, buyer, another] = await ethers.getSigners();
     const uri = 'https://my.metadata.sample/';
     const nftAmounts = [50, 100, 200, 500, 1000, 10000];
 
@@ -15,8 +15,11 @@ describe('Bundler', function () {
     const MockERC20 = await ethers.getContractFactory('MockERC20');
     const mockPaymentToken = await MockERC20.deploy('MockToken', 'MTK', 18);
 
+    const MockCCIPRouter = await ethers.getContractFactory('MockCCIPRouter');
+    const mockRouter = await MockCCIPRouter.deploy();
+
     const Bundler = await ethers.getContractFactory('Bundler');
-    const bundler = await Bundler.deploy(await mockPaymentToken.getAddress(), router);
+    const bundler = await Bundler.deploy(await mockPaymentToken.getAddress(), mockRouter.getAddress());
 
     // Transfer nfts to the bundler
     await nft.safeBatchTransferFrom(owner, bundler.getAddress(), [1, 2, 3], [5, 5, 5], ZeroHash);
@@ -32,6 +35,7 @@ describe('Bundler', function () {
       owner,
       buyer,
       another,
+      mockRouter,
     };
   }
 
@@ -99,9 +103,9 @@ describe('Bundler', function () {
 
       await nft.setApprovalForAll(await bundler.getAddress(), true);
       await bundler.createBundle(await nft.getAddress(), [1, 2], [5, 5], ethers.parseEther('0.1'), 5);
-      
+
       await mockPaymentToken.connect(buyer).freeze(true);
-      
+
       await expect(bundler.connect(buyer).purchaseBundle(0)).to.revertedWithCustomError(bundler, 'TransferFailed');
     });
 
@@ -141,6 +145,36 @@ describe('Bundler', function () {
       const bundle = await bundler.bundles(0);
       expect(bundle.isActive).to.be.false;
       await expect(bundler.connect(buyer).purchaseBundle(0)).to.revertedWithCustomError(bundler, 'BundleNotActive');
+    });
+  });
+
+  describe('CCIP Receiver', function () {
+    it('Should process CCIP message for bundle purchase', async function () {
+      const { bundler, nft, owner, buyer, mockRouter, mockPaymentToken } = await loadFixture(deployBundlerFixture);
+
+      await nft.setApprovalForAll(await bundler.getAddress(), true);
+      await bundler.connect(owner).createBundle(await nft.getAddress(), [1, 2], [5, 5], ethers.parseEther('0.1'), 1);
+      let bundleId = 0;
+
+      const ccipMessage = {
+        messageId: ethers.zeroPadBytes(ethers.toUtf8Bytes('test'), 32),
+        sourceChainSelector: 123n,
+        sender: ethers.solidityPacked(['address'], [await mockRouter.getAddress()]),
+        data: ethers.AbiCoder.defaultAbiCoder().encode(['uint256', 'address'], [bundleId, buyer.address]),
+        destTokenAmounts: [
+          {
+            token: await mockPaymentToken.getAddress(),
+            amount: ethers.parseEther('10'),
+          },
+        ],
+        destToken: [await mockPaymentToken.getAddress()],
+      };
+
+      await mockRouter.simulateSend(ccipMessage, await bundler.getAddress());
+
+      const updatedBundle = await bundler.bundles(bundleId);
+      expect(updatedBundle.remainingQuantity).to.equal(0);
+      expect(updatedBundle.isActive).to.be.false;
     });
   });
 });

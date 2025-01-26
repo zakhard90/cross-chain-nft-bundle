@@ -152,13 +152,13 @@ contract Bundler is CCIPReceiver, Ownable, ReentrancyGuard, IERC1155Receiver {
     emit BundlePurchased(_bundleId, _buyer);
   }
 
-  function _ccipReceive(Client.Any2EVMMessage memory message) internal override {
-    (uint256 bundleId, address buyer) = abi.decode(message.data, (uint256, address));
+  function _ccipReceive(Client.Any2EVMMessage memory _message) internal override {
+    (uint256 bundleId, address buyer) = abi.decode(_message.data, (uint256, address));
 
     if (buyer == address(0)) {
       revert InvalidZeroAddress();
     }
-    if (message.destTokenAmounts.length == 0) {
+    if (_message.destTokenAmounts.length == 0) {
       revert InvalidTokenAmount();
     }
 
