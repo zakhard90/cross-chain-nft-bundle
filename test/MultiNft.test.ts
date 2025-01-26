@@ -31,10 +31,18 @@ describe('MultiNft', function () {
       const { MultiNft, owner, uri, nftAmounts } = await loadFixture(deployFixture);
       const ids = nftAmounts.map((a, i) => i + 1);
       const multiNft = await MultiNft.deploy(owner.address, uri, nftAmounts, ZeroHash);
-      
+
       await expect(multiNft.deploymentTransaction())
         .to.emit(multiNft, 'TransferBatch')
         .withArgs(owner.address, ZeroAddress, owner.address, ids, nftAmounts);
+    });
+
+    it('Should fail on zero amount', async function () {
+      const { MultiNft, owner, uri } = await loadFixture(deployFixture);
+
+      await expect(MultiNft.deploy(owner.address, uri, [100, 0, 200], ZeroHash))
+        .to.revertedWithCustomError(MultiNft, 'InvalidAmountAt')
+        .withArgs(1n);
     });
   });
 });
