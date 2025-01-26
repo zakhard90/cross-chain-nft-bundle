@@ -106,7 +106,7 @@ describe('Bundler', function () {
 
       await mockPaymentToken.connect(buyer).freeze(true);
 
-      await expect(bundler.connect(buyer).purchaseBundle(0)).to.revertedWithCustomError(bundler, 'TransferFailed');
+      await expect(bundler.connect(buyer).purchaseBundle(0)).to.be.revertedWithCustomError(bundler, 'TransferFailed');
     });
 
     it('Should deactivate bundle when quantity reaches zero', async function () {
@@ -144,7 +144,7 @@ describe('Bundler', function () {
 
       const bundle = await bundler.bundles(0);
       expect(bundle.isActive).to.be.false;
-      await expect(bundler.connect(buyer).purchaseBundle(0)).to.revertedWithCustomError(bundler, 'BundleNotActive');
+      await expect(bundler.connect(buyer).purchaseBundle(0)).to.be.revertedWithCustomError(bundler, 'BundleNotActive');
     });
   });
 
@@ -175,6 +175,37 @@ describe('Bundler', function () {
       const updatedBundle = await bundler.bundles(bundleId);
       expect(updatedBundle.remainingQuantity).to.equal(0);
       expect(updatedBundle.isActive).to.be.false;
+    });
+
+    it('Should not purchase via CCIP message due to insufficient funds', async function () {
+      const { bundler, nft, owner, buyer, mockRouter, mockPaymentToken } = await loadFixture(deployBundlerFixture);
+
+      await nft.setApprovalForAll(await bundler.getAddress(), true);
+      await bundler.connect(owner).createBundle(await nft.getAddress(), [1, 2], [5, 5], ethers.parseEther('1001'), 1);
+      let bundleId = 0;
+
+      const ccipMessage = {
+        messageId: ethers.zeroPadBytes(ethers.toUtf8Bytes('test'), 32),
+        sourceChainSelector: 123n,
+        sender: ethers.solidityPacked(['address'], [await mockRouter.getAddress()]),
+        data: ethers.AbiCoder.defaultAbiCoder().encode(['uint256', 'address'], [bundleId, buyer.address]),
+        destTokenAmounts: [
+          {
+            token: await mockPaymentToken.getAddress(),
+            amount: ethers.parseEther('1001'),
+          },
+        ],
+        destToken: [await mockPaymentToken.getAddress()],
+      };
+
+      await expect(mockRouter.simulateSend(ccipMessage, await bundler.getAddress())).to.be.revertedWithCustomError(
+        mockPaymentToken,
+        'ERC20InsufficientAllowance'
+      );
+
+      const updatedBundle = await bundler.bundles(bundleId);
+      expect(updatedBundle.remainingQuantity).to.equal(1);
+      expect(updatedBundle.isActive).to.be.true;
     });
   });
 });
