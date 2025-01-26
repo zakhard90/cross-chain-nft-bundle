@@ -2,12 +2,13 @@
 pragma solidity 0.8.28;
 
 import { IERC1155 } from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
+import { IERC1155Receiver } from "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-contract Bundler is Ownable, ReentrancyGuard {
+contract Bundler is Ownable, ReentrancyGuard, IERC1155Receiver {
   using SafeERC20 for IERC20;
 
   struct Bundle {
@@ -119,5 +120,31 @@ contract Bundler is Ownable, ReentrancyGuard {
 
     bundle.isActive = false;
     bundle.remainingQuantity = 0;
+  }
+
+  function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
+    return
+      interfaceId == 0x01ffc9a7 || // ERC165 Interface ID for ERC165
+      interfaceId == 0x4e2312e0; // ERC1155Receiver Interface ID
+  }
+
+  function onERC1155Received(
+    address,
+    address,
+    uint256,
+    uint256,
+    bytes calldata
+  ) external pure returns (bytes4) {
+    return this.onERC1155Received.selector;
+  }
+
+  function onERC1155BatchReceived(
+    address,
+    address,
+    uint256[] calldata,
+    uint256[] calldata,
+    bytes calldata
+  ) external pure returns (bytes4) {
+    return this.onERC1155BatchReceived.selector;
   }
 }
