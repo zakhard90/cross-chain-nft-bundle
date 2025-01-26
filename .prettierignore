@@ -1,0 +1,12 @@
+# dependencies
+node_modules
+package-lock.json
+yarn.lock
+
+# hardhat
+cache
+typechain
+typechain-types
+artifacts
+coverage
+coverage.json
