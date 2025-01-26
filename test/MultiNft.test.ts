@@ -4,16 +4,15 @@ import { BigNumberish, toBigInt, ZeroAddress, ZeroHash } from 'ethers';
 import { ethers } from 'hardhat';
 
 describe('MultiNft', function () {
-  const nftAmounts = [5, 10, 20, 50, 100, 1000];
-
   async function deployFixture() {
     const [owner, ...otherAccounts] = await ethers.getSigners();
     const uri = 'https://my.metadata.sample/';
+    const nftAmounts = [5, 10, 20, 50, 100, 1000];
 
     const MultiNft = await ethers.getContractFactory('MultiNft');
-    const nft = await MultiNft.deploy(owner.address, uri, nftAmounts);
+    const nft = await MultiNft.deploy(owner.address, uri, nftAmounts, ZeroHash);
 
-    return { nft, owner, otherAccounts, uri, nftAmounts };
+    return { nft, owner, otherAccounts, uri, nftAmounts, MultiNft };
   }
 
   describe('Constructor', function () {
@@ -22,6 +21,20 @@ describe('MultiNft', function () {
 
       expect(await nft.owner()).to.equal(owner);
       expect(await nft.uri(0)).to.equal(`${uri}{id}`);
+
+      for (let i = 0; i < nftAmounts.length; i++) {
+        expect(await nft.getSupply(i + 1)).to.equal(nftAmounts[i]);
+      }
+    });
+
+    it('Should emit transfer batch event on deployment', async function () {
+      const { MultiNft, owner, uri, nftAmounts } = await loadFixture(deployFixture);
+      const ids = nftAmounts.map((a, i) => i + 1);
+      const multiNft = await MultiNft.deploy(owner.address, uri, nftAmounts, ZeroHash);
+      
+      await expect(multiNft.deploymentTransaction())
+        .to.emit(multiNft, 'TransferBatch')
+        .withArgs(owner.address, ZeroAddress, owner.address, ids, nftAmounts);
     });
   });
 });

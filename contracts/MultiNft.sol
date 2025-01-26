@@ -3,14 +3,18 @@ pragma solidity 0.8.28;
 
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { ERC1155 } from "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
-import "hardhat/console.sol";
 
 contract MultiNft is Ownable, ERC1155 {
   mapping(uint256 => uint256) private _supplies;
 
   error InvalidAmountAt(uint256 index);
 
-  constructor(address _owner, string memory _uri, uint256[] memory _amounts) ERC1155(_uri) Ownable(_owner) {
+  constructor(
+    address _owner,
+    string memory _uri,
+    uint256[] memory _amounts,
+    bytes memory _data
+  ) ERC1155(_uri) Ownable(_owner) {
     uint256[] memory ids = new uint256[](_amounts.length);
 
     for (uint256 i; i < _amounts.length; ) {
@@ -28,7 +32,7 @@ contract MultiNft is Ownable, ERC1155 {
         ++i;
       }
     }
-    _mintBatch(_owner, ids, _amounts, "");
+    _mintBatch(_owner, ids, _amounts, _data);
   }
 
   function uri(uint256) public view override returns (string memory) {
