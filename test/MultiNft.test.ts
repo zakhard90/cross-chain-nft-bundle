@@ -1,6 +1,6 @@
 import { loadFixture } from '@nomicfoundation/hardhat-toolbox/network-helpers';
 import { expect } from 'chai';
-import { BigNumberish, toBigInt, ZeroAddress, ZeroHash } from 'ethers';
+import { ZeroAddress, ZeroHash } from 'ethers';
 import { ethers } from 'hardhat';
 
 describe('MultiNft', function () {

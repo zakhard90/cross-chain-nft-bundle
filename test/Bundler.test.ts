@@ -1,7 +1,7 @@
 import { loadFixture } from '@nomicfoundation/hardhat-network-helpers';
 import { expect } from 'chai';
 import { ethers } from 'hardhat';
-import { getAddress, ZeroHash } from 'ethers';
+import { ZeroHash } from 'ethers';
 
 describe('Bundler', function () {
   async function deployBundlerFixture() {
